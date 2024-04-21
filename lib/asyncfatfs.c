@@ -1830,7 +1830,7 @@ static uint8_t* afatfs_fileLockCursorSectorForWrite(afatfsFilePtr_t file)
 {
     afatfsOperationStatus_e status;
     uint8_t *result;
-    uint32_t eraseBlockCount;
+    uint32_t eraseBlockCount = 0;
 
     // Do we already have a sector locked in our cache at the cursor position?
     if (file->writeLockedCacheIndex != -1) {
@@ -1867,14 +1867,14 @@ static uint8_t* afatfs_fileLockCursorSectorForWrite(afatfsFilePtr_t file)
             cacheFlags |= AFATFS_CACHE_READ;
         }
 
+#ifdef AFATFS_USE_FREEFILE
         // In contiguous append mode, we'll pre-erase the whole supercluster
         if ((file->mode & (AFATFS_FILE_MODE_APPEND | AFATFS_FILE_MODE_CONTIGUOUS)) == (AFATFS_FILE_MODE_APPEND | AFATFS_FILE_MODE_CONTIGUOUS)) {
             uint32_t cursorOffsetInSupercluster = file->cursorOffset & (afatfs_superClusterSize() - 1);
 
             eraseBlockCount = afatfs_fatEntriesPerSector() * afatfs.sectorsPerCluster - cursorOffsetInSupercluster / AFATFS_SECTOR_SIZE;
-        } else {
-            eraseBlockCount = 0;
         }
+#endif
 
         status = afatfs_cacheSector(
             physicalSector,
