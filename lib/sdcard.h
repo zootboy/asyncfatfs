@@ -101,6 +101,7 @@ sdcardOperationStatus_e sdcard_beginWriteBlocks(uint32_t blockIndex, uint32_t bl
  *     SDCARD_OPERATION_BUSY        - The card is busy with another operation and could not cancel the multi-block write.
  */
 sdcardOperationStatus_e sdcard_endWriteBlocks();
+// TODO: get rid of this? It is never called.
 
 /**
  * Only required to be provided when using AFATFS_USE_INTROSPECTIVE_LOGGING.

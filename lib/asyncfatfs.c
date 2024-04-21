@@ -13,6 +13,19 @@
  * size, which we get from the directory entry). This allows for extremely fast append-only logging.
  */
 
+// === Compile-time settings ===
+//#define AFATFS_DEBUG
+//#define AFATFS_DEBUG_VERBOSE
+//#define AFATFS_USE_INTROSPECTIVE_LOGGING
+#define AFATFS_NUM_CACHE_SECTORS 8
+#define AFATFS_MAX_OPEN_FILES 3
+#define AFATFS_MIN_MULTIPLE_BLOCK_WRITE_COUNT 4
+//#define AFATFS_USE_FREEFILE
+#define AFATFS_FREEFILE_LEAVE_CLUSTERS 100
+#define AFATFS_FREESPACE_FILENAME "FREESPAC.E"
+#define AFATFS_INTROSPEC_LOG_FILENAME "ASYNCFAT.LOG"
+// === End of compile-time settings ===
+
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
@@ -33,22 +46,13 @@
     #define ONLY_EXPOSE_FOR_TESTING static
 #endif
 
-#define AFATFS_NUM_CACHE_SECTORS 8
 
 // FAT filesystems are allowed to differ from these parameters, but we choose not to support those weird filesystems:
 #define AFATFS_SECTOR_SIZE  512
 #define AFATFS_NUM_FATS     2
 
-#define AFATFS_MAX_OPEN_FILES 3
-
 #define AFATFS_DEFAULT_FILE_DATE FAT_MAKE_DATE(2015, 12, 01)
 #define AFATFS_DEFAULT_FILE_TIME FAT_MAKE_TIME(00, 00, 00)
-
-/*
- * How many blocks will we write in a row before we bother using the SDcard's multiple block write method?
- * If this define is omitted, this disables multi-block write.
- */
-#define AFATFS_MIN_MULTIPLE_BLOCK_WRITE_COUNT 4
 
 #define AFATFS_FILES_PER_DIRECTORY_SECTOR (AFATFS_SECTOR_SIZE / sizeof(fatDirectoryEntry_t))
 
@@ -78,17 +82,6 @@
 #define AFATFS_CACHE_DISCARDABLE  8
 // Increase the retain counter of the cache sector to prevent it from being discarded when in the in-sync state
 #define AFATFS_CACHE_RETAIN       16
-
-// Turn the largest free block on the disk into one contiguous file for efficient fragment-free allocation
-#define AFATFS_USE_FREEFILE
-
-// When allocating a freefile, leave this many clusters un-allocated for regular files to use
-#define AFATFS_FREEFILE_LEAVE_CLUSTERS 100
-
-// Filename in 8.3 format:
-#define AFATFS_FREESPACE_FILENAME "FREESPAC.E"
-
-#define AFATFS_INTROSPEC_LOG_FILENAME "ASYNCFAT.LOG"
 
 #define MIN(a, b) ((a) < (b) ? (a) : (b))
 #define MAX(a, b) ((a) > (b) ? (a) : (b))
@@ -2717,6 +2710,7 @@ static void afatfs_funlinkContinue(afatfsFilePtr_t file)
  * Returns true if the operation was successfully queued (callback will be called some time after this routine returns)
  * or false if the file is busy and you should try again later.
  */
+// TODO: does this work on directories? How about directories with files in them?
 bool afatfs_funlink(afatfsFilePtr_t file, afatfsCallback_t callback)
 {
     afatfsUnlinkFile_t *opState = &file->operation.state.unlinkFile;
