@@ -425,6 +425,13 @@ Request the current position of the file cursor of an open file. `file` must be 
 Returns `true` if the operation succeeded, or `false` if the file is busy (in which case the `position`
 variable will be left untouched).
 
+`bool afatfs_fGetSize(afatfsFilePtr_t file, uint32_t *size)`
+
+Get the logical file size of an open file. If the call returns `true`, the logical size (in bytes) has been
+placed in the `size` variable. If the call returns `false`, the file was busy and no size was reported; retry
+the call later. Note that the logical size is based on cached information held in the AsyncFatFS file
+descriptor, and is not guaranteed to have been persisted to storage.
+
 `bool afatfs_feof(afatfsFilePtr_t file)`
 
 Check whether the file's cursor is currently at the end-of-file point (one byte past the last byte of the

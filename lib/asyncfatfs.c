@@ -2121,6 +2121,23 @@ bool afatfs_ftell(afatfsFilePtr_t file, uint32_t *position)
 }
 
 /**
+ * Get the logical size of the file.
+ *
+ * Returns true on success, or false if the file is busy (try again later).
+ */
+bool afatfs_fGetSize(afatfsFilePtr_t file, uint32_t *size)
+{
+    if (afatfs_fileIsBusy(file)) {
+        return false;
+    } else {
+        // The logical size can get out of date, so update it first.
+        afatfs_fileUpdateFilesize(file);
+        *size = file->logicalSize;
+        return true;
+    }
+}
+
+/**
  * Attempt to advance the directory pointer `finder` to the next entry in the directory.
  *
  * Returns:
