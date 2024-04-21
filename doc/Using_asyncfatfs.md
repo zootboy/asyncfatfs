@@ -43,8 +43,8 @@ be created and remain on the volume.
 
 #### No Long Filename Support
 
-AsyncFatFS does not support reading or setting long filenames in FAT32. All files and directories must be
-referred to by their "8.3" filenames.
+AsyncFatFS does not support reading or setting long filenames. All files and directories must be referred to
+by their "8.3" filenames.
 
 #### No Error Detection / Handling
 
@@ -75,8 +75,10 @@ AsyncFatFS requires a C99-compatible compiler. In addition, the compiler must su
 
 There are a number of `#define` settings that can be adjusted in `asyncfatfs.c`:
 
-`#define AFATFS_DEBUG`
-`#define AFATFS_DEBUG_VERBOSE`
+```
+#define AFATFS_DEBUG
+#define AFATFS_DEBUG_VERBOSE
+```
 
 Turns on various asserts and debug features. Note that these features require `signal.h` and `stdio.h`, and
 thus may not be suitable for use in embedded systems. The \_VERBOSE flag includes some additional printfs to
@@ -130,18 +132,18 @@ depending on the cluster size of the FAT).
 
 Choose the filename that the freespace feature uses for its special reservation file. Note that this file
 never contains user data, only reserved blocks to be used when writing other files. The filename must respect
-the FAT32 "8.3" name limitation.
+the FAT "8.3" name limitation.
 
 ### User API
 
 This section describes the user-facing API of AsyncFatFS. The backend driver API that AsyncFatFS itself calls
-is described elsewhere.
+is described [in the next section](#backend-driver-api).
 
 #### General Notes about API Usage
 
 All functions in the API are non-blocking. Because of this requirement, most operations do not succeed
 immediately; instead, they merely queue up the operation for later processing. It is important to check the
-return values for all API calls and handle them appropriately. Some calls will require to be called multiple
+return values for all API calls and handle them appropriately. Some calls will need to be called multiple
 times until they report success. Other calls require you to register a callback that will be fired when the
 operation completes.
 
@@ -151,26 +153,29 @@ operation completes.
 > state machine states from within callback functions.
 
 File handles must be treated as opaque pointers. Once a file has been closed, any references to its handle
-must be discarded. File handles are recycled internally, so no guarantees are made about the state of handles
-after a close.
+that were kept bt the user application must be discarded. File handles are recycled internally, so no
+guarantees are made about the state of handles after a close.
 
 AsyncFatFS allows directories to be opened and referred to by file handles. This is primarily to enable the
 directory listing and chdir functionality; directory pseudo-files may not be used to open files outside of the
 CWD. Attempting to perform file operations (e.g. fread, fwrite) on a directory file handle may result in
 undefined behavior.
 
-> [!NOTE]
-> Throughout the documentation, the term `CWD` is used to refer to the Current Working Directory. 
-> See the notes in the "Paths and the Current Working Directory" section below for more information.
+Throughout the documentation, the term `CWD` is used to refer to the Current Working Directory.  See the notes
+in the [Paths and the Current Working Directory](#paths-and-the-current-working-directory) section for more
+information.
 
 #### Initialization and Mainloop
 
 `void afatfs_init(void)`
 
-This function must be called once at platform startup. It should be called after any required initialization
-routines are complete for the backend storage driver. Note that AsyncFatFS will require a number of calls to
-`afatfs_poll` to complete initialization. Once initialization is complete, the CWD will be set to the root
-directory of the filesystem.
+This function initializes the global data structures for the AsyncFatFS library and starts the process of
+mounting the FAT16/FAT32 volume. This function must be called once, and must be called before any other
+AsyncFatFS API functions are called. It should be called after any required initialization routines are
+complete for the backend storage driver. If the storage media is removable, wait until media has been detected
+to call `afatfs_init`. Note that AsyncFatFS will require a number of calls to `afatfs_poll` to complete
+initialization. The user can call `afatfs_getFilesystemState` to check the status of the initialization. Once
+initialization is complete, the CWD will be set to the root directory of the filesystem.
 
 `void afatfs_poll(void)`
 
@@ -182,8 +187,8 @@ should be called frequently from the user application's mainloop.
 
 Attempt to flush all dirty blocks in RAM to the backend. Returns `true` if all data has been successfully
 written to the backend, or `false` if there is still pending writes. Only ensures data sent by operations
-before the flush have been successfully passed to the backend driver. Any subsequent writes can produce newly
-dirty blocks.
+before the flush have been successfully passed to the backend driver. Any subsequent file or directory
+operations can produce newly-dirty blocks.
 
 `bool afatfs_destroy(bool dirty)`
 
@@ -193,22 +198,23 @@ media, this function must be called periodically until it returns `true`. After 
 backend-specific media flushes are complete, the media may be safely ejected. After this function returns
 `true`, a call to `afatfs_init()` must be made to begin using AsyncFatFS again.
 
-With the `dirty` parameter set to `true`, AsyncFatFS will skip cleanly closing the files and flushing dirty
-cache blocks to storage. THIS WILL CAUSE DATA LOSS!
+With the `dirty` parameter set to `true`, AsyncFatFS will skip cleanly closing files and flushing dirty cache
+blocks to storage. THIS WILL CAUSE DATA LOSS!
 
 #### Directory Operations
 
 `bool afatfs_mkdir(const char *filename, afatfsFileCallback_t complete)`
 
 Create or open a directory in the CWD with the filename supplied. Note that the filename must respect the
-FAT32 8.3 limitation. If the directory already exists, the operation will proceed as if it had created the
+FAT 8.3 limitation. If the directory already exists, the operation will proceed as if it had created the
 directory, but the files within the directory will not be affected. Returns `true` if the operation has
 begun, or `false` if there are no free file descriptors available to start the operation. The user must supply
 a callback function with the following signature:
 `void mkdir_callback(afatfsFilePtr_t file)`
 This callback will be fired with a file handle pointing to the new or existing directory if the operation
 succeeded, or it will be fired with a `NULL` file handle if the mkdir failed. Failures could be due to the
-filesystem being full or the CWD hitting a FAT32 limit.
+filesystem being full or the CWD hitting a FAT limit. It is up to the user application to close the directory
+handle once it is no longer needed.
 
 `bool afatfs_chdir(afatfsFilePtr_t dirHandle)`
 
@@ -238,12 +244,12 @@ pointer and pass the pointer to this pointer to the `dirEntry` argument. Each ca
 one or zero directory entries. If the return value of `afatfs_findNext` is `AFATFS_OPERATION_IN_PROGRESS`,
 then no directory entry was returned because the disk is busy and the operation will need to be retried later.
 If the return value is `AFATFS_OPERATION_SUCCESS`, then the `dirEntry` pointer will either be a pointer to a
-valid direcotry entry object, or NULL if the operation has reached the end of the directory.
+valid directory entry object, or `NULL` if the operation has reached the end of the directory.
 
 Directory entries are returned in the order they are found on the disk; alphabetical ordering is _not_
 guaranteed.
 
-In addition to real files and folders, a number of other entries may be returned:
+In addition to real files and directories, a number of other entries may be returned:
 - The `.` and `..` directory entries (for self and parent directory, respectively)
 - The volume ID pseudo-entry (check the attributes field for the `FAT_FILE_ATTRIBUTE_VOLUME_ID` flag)
 - Empty/deleted directory entities (use `fat_isDirectoryEntryEmpty` to check)
@@ -253,15 +259,16 @@ The user application may also want to check for the presence of the `FAT_FILE_AT
 `FAT_FILE_ATTRIBUTE_HIDDEN` flags and skip or ignore these files. For example, the `System Volume Information`
 directory (typically given the short name `SYSTEM~1`) created by Windows has both of these flags set.
 
-Once the terminator directory entry has been encountered, the user application must stop calling findNext and
-call `afatfs_findLast` to clean up the directory iterator.
+Once the terminator directory entry has been encountered, the user application must stop calling
+`afatfs_findNext` and call `afatfs_findLast` to clean up the directory iterator.
 
 `void afatfs_findLast(afatfsFilePtr_t directory)`
 
-This call cleans up the resources used during a directory listing operation. The `directory` argument is the
-file handle to the directory that was being listed. If no previous listing operation was in progress, this
-function is a no-op. It is safe to call it more than once. After findLast has been called, the `finder` object
-may be freed and the `directory` object may be closed with `afatfs_fclose` if it is no longer needed.
+This function cleans up the resources used during a directory listing operation. The `directory` argument is
+the file handle to the directory that was being listed. If no previous listing operation was in progress, this
+function is a no-op. It is safe to call it more than once. After `afatfs_findLast` has been called, the
+`finder` object may be freed and the `directory` object may be closed with `afatfs_fclose` if it is no longer
+needed.
 
 `bool fat_isDirectoryEntryEmpty(fatDirectoryEntry_t *entry)`
 
@@ -284,7 +291,7 @@ Begin creating or opening a file or directory within the CWD. Note that path sep
 are NOT supported. Only files or directories immediately within the CWD may be opened. To access files within
 a subdirectory, use the `afatfs_chdir` or `afatfs_mkdir` commands to change the CWD.
 
-The `filename` argument must be an ASCII string that follows the FAT32 8.3 filename convention. If the special
+The `filename` argument must be an ASCII string that follows the FAT 8.3 filename convention. If the special
 filename string `"."` is passed, the CWD is opened. This is useful for the `afatfs_findFirst` directory
 listing command.
 
@@ -300,13 +307,14 @@ supported:
 - `ws` - same as `w`, but uses the freefile optimization if available
 
 Note that all other mode strings are invalid. In particular, the `b` character is not allowed in AsyncFatFS,
-as there is no distinction between text and binary modes. All file data is handled as `uint8_t` bytes.
+as there is no distinction between text and binary modes. All file data is handled as `uint8_t` bytes and no
+special handling or conversion is ever applied to line ending characters.
 
 The `complete` argument requires a user-supplied callback function that will be fired when the fopen is
 complete. It uses the following signature:
 `void fopen_callback(afatfsFilePtr_t file)`
-If the fopen succeeded, the callback will be called with an open file handle to the requested file. If the
-fopen failed, the callback will be called with a `NULL` file handle.
+If the fopen succeeds, the callback will be called with an open file handle to the requested file. If the
+fopen fails, the callback will be called with a `NULL` file handle.
 
 The fopen command itself returns a `false` if the fopen could not be queued, usually due to no available file
 handles. The fopen command returns a `true` if the command has been successfully queued for processing. At
@@ -330,7 +338,7 @@ queued due to the file being busy.
 This function deletes the open file referred to by the `file` parameter. It behaves similarly to the `afatfs_ftruncate` command, but its callback differs in its signature:
 `void funlink_callback()`
 Note that the callback does not include a file handle, since after unlinking the file will be closed and
-therefor have no valid file handle.
+therefore have no valid file handle.
 
 `bool afatfs_fclose(afatfsFilePtr_t file, afatfsCallback_t callback)`
 
@@ -349,7 +357,7 @@ buffer immediately, then a background read operation is queued to pull the next 
 such, reads may return less than the requested number of bytes. It is up to the user application to check the
 return value, which contains the number of bytes actually returned by the read operation. If a zero is
 returned, either the file is busy or the cursor has reached the end of the file. To check which is the case,
-the user application may call `afatfs_isEof`. If the file is not at EOF, the read may be periodically retried
+the user application may call `afatfs_feof`. If the file is not at EOF, the read may be periodically retried
 until it succeeds.
 
 Due to the strong coupling between storage blocks and the AsyncFatFS cache system, the most optimal read
@@ -454,7 +462,8 @@ files via the fast-path optimization provided by the freefile mode.
 
 Returns the global state of the filesystem:
 - `AFATFS_FILESYSTEM_STATE_UNKNOWN` - AsyncFatFS has not been initialized; call `afatfs_init`
-- `AFATFS_FILESYSTEM_STATE_INITIALIZATION` - AsyncFatFS is still performing the initial filesystem opening
+- `AFATFS_FILESYSTEM_STATE_INITIALIZATION` - AsyncFatFS is still performing the initial filesystem opening and
+sanity checks
 - `AFATFS_FILESYSTEM_STATE_READY` - Initialization is complete and the filesystem may be used
 - `AFATFS_FILESYSTEM_STATE_FATAL` - Initialization failed; see the `afatfs_getLastError` function for details
 
@@ -469,10 +478,10 @@ error code. The available errors are:
 
 ### Backend Driver API
 
-These are the functions that AsyncFatFS itself calls to interact with the storage backend. AsyncFatFS uses a
-block storage model, where blocks are addressed by 32-bit index number starting at index zero. Blocks are
-always 512 bytes long. This matches the standard behavior of SD cards. To implement a backend driver, include
-the `lib/sdcard.h` file and implement all of the mandatory functions described below.
+These are the functions that AsyncFatFS itself calls to interact with the storage backend. AsyncFatFS uses the
+LBA storage model, where blocks are addressed by sequential 32-bit index numbers starting at index zero.
+Blocks are always 512 bytes long. This matches the standard behavior of SD cards. To implement a backend
+driver, include the `lib/sdcard.h` file and implement all of the mandatory functions described below.
 
 Note that there is no periodic processing call made to the backend driver. If your driver requires such a
 call, it will need to be implemented and called outside of AsyncFatFS. A good time to do such a call would be
@@ -488,7 +497,7 @@ to call:
 Read a single 512-byte block of data at index `blockIndex` from the backend storage and transfer it to the
 buffer supplied in `buffer`. A callback function pointer is supplied by AsyncFatFS in the `callback` argument
 along with an opaque `callbackData` identifier; this pointer and identifier pair must be stored by the backend
-driver and called once the 512-byte block has been successfully transferred to the buffer. The callback
+driver and called once the full 512-byte block has been successfully transferred to the buffer. The callback
 function signature is the following:
 `void sdcard_operationCompleteCallback_c(sdcardBlockOperation_e operation, uint32_t blockIndex, uint8_t *buffer, uint32_t callbackData)`
 
@@ -505,8 +514,8 @@ AsyncFatFS may retry the same readBlock call again at a later time.
 
 The readBlock function itself must return quickly and therefore should not block; if the data is not
 immediately available, the function should queue the read and perform it asynchronously. Once a read operation
-is accepted, the contents of the buffer are owned by the backend driver and may be written to at any time and
-in any order until the callback function is called, after which the buffer may not be altered further. The
+is accepted, the contents of `buffer` are owned by the backend driver and may be written to at any time and
+in any order until the callback function is called, after which `buffer` may not be altered further. The
 callback function passed to the backend driver may safely be called at any time.
 
 The backend driver may queue multiple reads if it is capable of doing so, however each read operation that is
