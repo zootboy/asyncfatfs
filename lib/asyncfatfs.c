@@ -428,7 +428,7 @@ typedef struct afatfs_t {
     } initState;
 #endif
 
-    uint8_t cache[AFATFS_SECTOR_SIZE * AFATFS_NUM_CACHE_SECTORS];
+    uint8_t cache[AFATFS_SECTOR_SIZE * AFATFS_NUM_CACHE_SECTORS] __attribute__ ((aligned (4)));
     afatfsCacheBlockDescriptor_t cacheDescriptor[AFATFS_NUM_CACHE_SECTORS];
     uint32_t cacheTimer;
 
