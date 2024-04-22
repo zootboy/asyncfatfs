@@ -2078,7 +2078,8 @@ afatfsOperationStatus_e afatfs_fseek(afatfsFilePtr_t file, int32_t offset, afatf
         case AFATFS_SEEK_CUR:
             if (offset >= 0) {
                 // Only forwards seeks are supported by this routine:
-                return afatfs_fseekInternal(file, MIN(file->cursorOffset + offset, file->logicalSize), NULL, NULL);
+                uint32_t delta = MIN((uint32_t)offset, file->logicalSize - file->cursorOffset);
+                return afatfs_fseekInternal(file, delta, NULL, NULL);
             }
 
             // Convert a backwards relative seek into a SEEK_SET. TODO considerable room for improvement if within the same cluster
