@@ -40,13 +40,13 @@ typedef enum {
     AFATFS_SEEK_END,
 } afatfsSeek_e;
 
-typedef void (*afatfsFileCallback_t)(afatfsFilePtr_t file);
-typedef void (*afatfsCallback_t)();
+typedef void (*afatfsFileCallback_t)(afatfsFilePtr_t file, void *user);
+typedef void (*afatfsCallback_t)(void *user);
 
-bool afatfs_fopen(const char *filename, const char *mode, afatfsFileCallback_t complete);
-bool afatfs_ftruncate(afatfsFilePtr_t file, afatfsFileCallback_t callback);
-bool afatfs_fclose(afatfsFilePtr_t file, afatfsCallback_t callback);
-bool afatfs_funlink(afatfsFilePtr_t file, afatfsCallback_t callback);
+bool afatfs_fopen(const char *filename, const char *mode, afatfsFileCallback_t complete, void *user);
+bool afatfs_ftruncate(afatfsFilePtr_t file, afatfsFileCallback_t callback, void *user);
+bool afatfs_fclose(afatfsFilePtr_t file, afatfsCallback_t callback, void *user);
+bool afatfs_funlink(afatfsFilePtr_t file, afatfsCallback_t callback, void *user);
 
 bool afatfs_feof(afatfsFilePtr_t file);
 void afatfs_fputc(afatfsFilePtr_t file, uint8_t c);
@@ -56,7 +56,7 @@ afatfsOperationStatus_e afatfs_fseek(afatfsFilePtr_t file, int32_t offset, afatf
 bool afatfs_ftell(afatfsFilePtr_t file, uint32_t *position);
 bool afatfs_fGetSize(afatfsFilePtr_t file, uint32_t *size);
 
-bool afatfs_mkdir(const char *filename, afatfsFileCallback_t complete);
+bool afatfs_mkdir(const char *filename, afatfsFileCallback_t complete, void *user);
 bool afatfs_chdir(afatfsFilePtr_t dirHandle);
 
 void afatfs_findFirst(afatfsFilePtr_t directory, afatfsFinder_t *finder);

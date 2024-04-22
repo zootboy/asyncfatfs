@@ -203,18 +203,19 @@ blocks to storage. THIS WILL CAUSE DATA LOSS!
 
 #### Directory Operations
 
-`bool afatfs_mkdir(const char *filename, afatfsFileCallback_t complete)`
+`bool afatfs_mkdir(const char *filename, afatfsFileCallback_t complete, void *user)`
 
 Create or open a directory in the CWD with the filename supplied. Note that the filename must respect the
 FAT 8.3 limitation. If the directory already exists, the operation will proceed as if it had created the
 directory, but the files within the directory will not be affected. Returns `true` if the operation has
 begun, or `false` if there are no free file descriptors available to start the operation. The user must supply
 a callback function with the following signature:
-`void mkdir_callback(afatfsFilePtr_t file)`
+`void mkdir_callback(afatfsFilePtr_t file, void *user)`
 This callback will be fired with a file handle pointing to the new or existing directory if the operation
 succeeded, or it will be fired with a `NULL` file handle if the mkdir failed. Failures could be due to the
-filesystem being full or the CWD hitting a FAT limit. It is up to the user application to close the directory
-handle once it is no longer needed.
+filesystem being full or the CWD hitting a FAT limit. The `user` pointer may be used to identify the source of
+the callback, or may be left `NULL` if not needed. It is up to the user application to close the directory
+handle supplied to the callback (if not `NULL`) once it is no longer needed.
 
 `bool afatfs_chdir(afatfsFilePtr_t dirHandle)`
 
@@ -285,7 +286,7 @@ there are no further valid entities after this one.
 
 #### File Operations
 
-`bool afatfs_fopen(const char *filename, const char *mode, afatfsFileCallback_t complete)`
+`bool afatfs_fopen(const char *filename, const char *mode, afatfsFileCallback_t complete, void *user)`
 
 Begin creating or opening a file or directory within the CWD. Note that path separator characters (`/` or `\`)
 are NOT supported. Only files or directories immediately within the CWD may be opened. To access files within
@@ -312,39 +313,42 @@ special handling or conversion is ever applied to line ending characters.
 
 The `complete` argument requires a user-supplied callback function that will be fired when the fopen is
 complete. It uses the following signature:
-`void fopen_callback(afatfsFilePtr_t file)`
+`void fopen_callback(afatfsFilePtr_t file, void *user)`
 If the fopen succeeds, the callback will be called with an open file handle to the requested file. If the
-fopen fails, the callback will be called with a `NULL` file handle.
+fopen fails, the callback will be called with a `NULL` file handle. The `user` argument can be used to
+differentiate the source of the callback, or may be left `NULL` if not needed.
 
 The fopen command itself returns a `false` if the fopen could not be queued, usually due to no available file
 handles. The fopen command returns a `true` if the command has been successfully queued for processing. At
 this point, the user application must wait for the callback in order to proceed.
 
-`bool afatfs_ftruncate(afatfsFilePtr_t file, afatfsFileCallback_t callback)`
+`bool afatfs_ftruncate(afatfsFilePtr_t file, afatfsFileCallback_t callback, void *user)`
 
 This function truncates an existing, open file to zero length. `file` must be an open file handle with write
 permissions. `callback` is a user-supplied callback function that will fire once the truncation operation has
 completed. The callback uses the following signature:
-`void fopen_callback(afatfsFilePtr_t file)`
-The `file` argument to the callback always contains the file handle of the file that was truncated. The file
-itself will remain in a busy state from the successful calling of ftruncate until the firing of the
-callback; any reads or writes to the file will fail until the callback is fired.
+`void fopen_callback(afatfsFilePtr_t file, void *user)`
+The `file` argument to the callback always contains the file handle of the file that was truncated. The `user`
+argument is an opaque pointer that the user can supply to differentiate the source of the callback. `user` may
+be `NULL` if not needed. The file itself will remain in a busy state from the successful calling of ftruncate
+until the firing of the callback; any reads or writes to the file will fail until the callback is fired.
 
 The return value is `true` when the operation has been queued, or `false` when the operation could not be
 queued due to the file being busy.
 
-`bool afatfs_funlink(afatfsFilePtr_t file, afatfsCallback_t callback)`
+`bool afatfs_funlink(afatfsFilePtr_t file, afatfsCallback_t callback, void *user)`
 
 This function deletes the open file referred to by the `file` parameter. It behaves similarly to the `afatfs_ftruncate` command, but its callback differs in its signature:
-`void funlink_callback()`
-Note that the callback does not include a file handle, since after unlinking the file will be closed and
-therefore have no valid file handle.
+`void funlink_callback(void *user)`
+Note that the callback does not include a file handle, since after unlinking the file will be closed and 
+therefore have no valid file handle. The `user` pointer is still available to differentiate the source of the
+callback if needed.
 
-`bool afatfs_fclose(afatfsFilePtr_t file, afatfsCallback_t callback)`
+`bool afatfs_fclose(afatfsFilePtr_t file, afatfsCallback_t callback, void *user)`
 
 This function closes an open file or directory handle `file`. It calls a callback with the following signature
 once the close is complete:
-`void funlink_callback()`
+`void funlink_callback(void *user)`
 The fclose operation returns `true` if the close has been successfully queued, or `false` if the close could
 not be queued due to the file being busy.
 

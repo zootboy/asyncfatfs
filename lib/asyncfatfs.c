@@ -210,6 +210,7 @@ typedef struct afatfsFreeSpaceFAT_t {
 
 typedef struct afatfsCreateFile_t {
     afatfsFileCallback_t callback;
+    void *user;
 
     uint8_t phase;
     uint8_t filename[FAT_FILENAME_LENGTH];
@@ -217,6 +218,7 @@ typedef struct afatfsCreateFile_t {
 
 typedef struct afatfsSeek_t {
     afatfsFileCallback_t callback;
+    void *user;
 
     uint32_t seekOffset;
 } afatfsSeek_t;
@@ -285,6 +287,7 @@ typedef struct afatfsTruncateFile_t {
     uint32_t currentCluster; // Used to mark progress
     uint32_t endCluster; // Optional, for contiguous files set to 1 past the end cluster of the file, otherwise set to 0
     afatfsFileCallback_t callback;
+    void *user;
     afatfsTruncateFilePhase_e phase;
 } afatfsTruncateFile_t;
 
@@ -296,10 +299,12 @@ typedef enum {
 typedef struct afatfsDeleteFile_t {
     afatfsTruncateFile_t truncateFile;
     afatfsCallback_t callback;
+    void *user;
 } afatfsUnlinkFile_t;
 
 typedef struct afatfsCloseFile_t {
     afatfsCallback_t callback;
+    void *user;
 } afatfsCloseFile_t;
 
 typedef enum {
@@ -2009,7 +2014,7 @@ static bool afatfs_fseekInternalContinue(afatfsFile_t *file)
     file->operation.operation = AFATFS_FILE_OPERATION_NONE;
 
     if (opState->callback) {
-        opState->callback(file);
+        opState->callback(file, opState->user);
     }
 
     return true;
@@ -2026,12 +2031,12 @@ static bool afatfs_fseekInternalContinue(afatfsFile_t *file)
  *     AFATFS_OPERATION_FAILURE     - The seek could not be queued because the file was busy with another operation,
  *                                    try again later.
  */
-static afatfsOperationStatus_e afatfs_fseekInternal(afatfsFilePtr_t file, uint32_t offset, afatfsFileCallback_t callback)
+static afatfsOperationStatus_e afatfs_fseekInternal(afatfsFilePtr_t file, uint32_t offset, afatfsFileCallback_t callback, void *user)
 {
     // See if we can seek without queuing an operation
     if (afatfs_fseekAtomic(file, offset)) {
         if (callback) {
-            callback(file);
+            callback(file, user);
         }
 
         return AFATFS_OPERATION_SUCCESS;
@@ -2045,6 +2050,7 @@ static afatfsOperationStatus_e afatfs_fseekInternal(afatfsFilePtr_t file, uint32
 
         file->operation.operation = AFATFS_FILE_OPERATION_SEEK;
         opState->callback = callback;
+        opState->user = user;
         opState->seekOffset = offset;
 
         return AFATFS_OPERATION_IN_PROGRESS;
@@ -2072,7 +2078,7 @@ afatfsOperationStatus_e afatfs_fseek(afatfsFilePtr_t file, int32_t offset, afatf
         case AFATFS_SEEK_CUR:
             if (offset >= 0) {
                 // Only forwards seeks are supported by this routine:
-                return afatfs_fseekInternal(file, MIN(file->cursorOffset + offset, file->logicalSize), NULL);
+                return afatfs_fseekInternal(file, MIN(file->cursorOffset + offset, file->logicalSize), NULL, NULL);
             }
 
             // Convert a backwards relative seek into a SEEK_SET. TODO considerable room for improvement if within the same cluster
@@ -2102,7 +2108,7 @@ afatfsOperationStatus_e afatfs_fseek(afatfsFilePtr_t file, int32_t offset, afatf
     file->cursorOffset = 0;
 
     // Then seek forwards by the offset
-    return afatfs_fseekInternal(file, MIN((uint32_t) offset, file->logicalSize), NULL);
+    return afatfs_fseekInternal(file, MIN((uint32_t) offset, file->logicalSize), NULL, NULL);
 }
 
 /**
@@ -2269,7 +2275,7 @@ static afatfsOperationStatus_e afatfs_extendSubdirectoryContinue(afatfsFile_t *d
             directory->operation.operation = AFATFS_FILE_OPERATION_NONE;
 
             if (opState->callback) {
-                opState->callback(directory);
+                opState->callback(directory, NULL);
             }
 
             return AFATFS_OPERATION_SUCCESS;
@@ -2278,7 +2284,7 @@ static afatfsOperationStatus_e afatfs_extendSubdirectoryContinue(afatfsFile_t *d
             directory->operation.operation = AFATFS_FILE_OPERATION_NONE;
 
             if (opState->callback) {
-                opState->callback(NULL);
+                opState->callback(NULL, NULL);
             }
             return AFATFS_OPERATION_FAILURE;
         break;
@@ -2395,7 +2401,7 @@ static afatfsFilePtr_t afatfs_allocateFileHandle()
 static afatfsOperationStatus_e afatfs_ftruncateContinue(afatfsFilePtr_t file, bool markDeleted)
 {
     afatfsTruncateFile_t *opState = &file->operation.state.truncateFile;
-    afatfsOperationStatus_e status;
+    afatfsOperationStatus_e status = AFATFS_OPERATION_FAILURE;
 
 #ifdef AFATFS_USE_FREEFILE
     uint32_t oldFreeFileStart, freeFileGrow;
@@ -2482,7 +2488,7 @@ static afatfsOperationStatus_e afatfs_ftruncateContinue(afatfsFilePtr_t file, bo
             }
 
             if (opState->callback) {
-                opState->callback(file);
+                opState->callback(file, opState->user);
             }
 
             return AFATFS_OPERATION_SUCCESS;
@@ -2503,7 +2509,7 @@ static afatfsOperationStatus_e afatfs_ftruncateContinue(afatfsFilePtr_t file, bo
  *
  * The callback is called once the file has been truncated (some time after this routine returns).
  */
-bool afatfs_ftruncate(afatfsFilePtr_t file, afatfsFileCallback_t callback)
+bool afatfs_ftruncate(afatfsFilePtr_t file, afatfsFileCallback_t callback, void *user)
 {
     afatfsTruncateFile_t *opState;
 
@@ -2514,6 +2520,7 @@ bool afatfs_ftruncate(afatfsFilePtr_t file, afatfsFileCallback_t callback)
 
     opState = &file->operation.state.truncateFile;
     opState->callback = callback;
+    opState->user = user;
     opState->phase = AFATFS_TRUNCATE_FILE_INITIAL;
     opState->startCluster = file->firstCluster;
     opState->currentCluster = opState->startCluster;
@@ -2674,7 +2681,7 @@ static void afatfs_createFileContinue(afatfsFile_t *file)
                 if ((file->mode & AFATFS_FILE_MODE_APPEND) != 0) {
                     // This replaces our open file operation
                     file->operation.operation = AFATFS_FILE_OPERATION_NONE;
-                    afatfs_fseekInternal(file, file->logicalSize, opState->callback);
+                    afatfs_fseekInternal(file, file->logicalSize, opState->callback, opState->user);
                     break;
                 }
 
@@ -2682,17 +2689,17 @@ static void afatfs_createFileContinue(afatfsFile_t *file)
                 if (file->mode == (AFATFS_FILE_MODE_CREATE | AFATFS_FILE_MODE_WRITE)) {
                     // This replaces our open file operation
                     file->operation.operation = AFATFS_FILE_OPERATION_NONE;
-                    afatfs_ftruncate(file, opState->callback);
+                    afatfs_ftruncate(file, opState->callback, opState->user);
                     break;
                 }
             }
 
             file->operation.operation = AFATFS_FILE_OPERATION_NONE;
-            opState->callback(file);
+            opState->callback(file, opState->user);
         break;
         case AFATFS_CREATEFILE_PHASE_FAILURE:
             file->type = AFATFS_FILE_TYPE_NONE;
-            opState->callback(NULL);
+            opState->callback(NULL, opState->user);
         break;
     }
 }
@@ -2717,7 +2724,7 @@ static void afatfs_funlinkContinue(afatfsFilePtr_t file)
     if (status == AFATFS_OPERATION_SUCCESS) {
         // Once the truncation is completed, we can close the file handle
         file->operation.operation = AFATFS_FILE_OPERATION_NONE;
-        afatfs_fclose(file, opState->callback);
+        afatfs_fclose(file, opState->callback, opState->user);
     }
 }
 
@@ -2728,7 +2735,7 @@ static void afatfs_funlinkContinue(afatfsFilePtr_t file)
  * or false if the file is busy and you should try again later.
  */
 // TODO: does this work on directories? How about directories with files in them?
-bool afatfs_funlink(afatfsFilePtr_t file, afatfsCallback_t callback)
+bool afatfs_funlink(afatfsFilePtr_t file, afatfsCallback_t callback, void *user)
 {
     afatfsUnlinkFile_t *opState = &file->operation.state.unlinkFile;
 
@@ -2742,7 +2749,7 @@ bool afatfs_funlink(afatfsFilePtr_t file, afatfsCallback_t callback)
      */
 
     // Start the sub-operation of truncating the file
-    if (!afatfs_ftruncate(file, NULL))
+    if (!afatfs_ftruncate(file, NULL, NULL))
         return false;
 
     /*
@@ -2750,6 +2757,7 @@ bool afatfs_funlink(afatfsFilePtr_t file, afatfsCallback_t callback)
      * calling back early when it completes:
      */
     opState->callback = callback;
+    opState->user = user;
 
     file->operation.operation = AFATFS_FILE_OPERATION_UNLINK;
 
@@ -2767,7 +2775,7 @@ bool afatfs_funlink(afatfsFilePtr_t file, afatfsCallback_t callback)
  * callback         - Called when the operation is complete
  */
 static afatfsFilePtr_t afatfs_createFile(afatfsFilePtr_t file, const char *name, uint8_t attrib, uint8_t fileMode,
-        afatfsFileCallback_t callback)
+        afatfsFileCallback_t callback, void *user)
 {
     afatfsCreateFile_t *opState = &file->operation.state.createFile;
 
@@ -2796,6 +2804,7 @@ static afatfsFilePtr_t afatfs_createFile(afatfsFilePtr_t file, const char *name,
     }
 
     opState->callback = callback;
+    opState->user = user;
 
     if (strcmp(name, ".") == 0) {
         // Since we already have the directory entry details, we can skip straight to the final operations requried
@@ -2852,7 +2861,7 @@ static void afatfs_fcloseContinue(afatfsFilePtr_t file)
     file->operation.operation = AFATFS_FILE_OPERATION_NONE;
 
     if (opState->callback) {
-        opState->callback();
+        opState->callback(opState->user);
     }
 }
 
@@ -2865,7 +2874,7 @@ static void afatfs_fcloseContinue(afatfsFilePtr_t file)
  * If this function returns true, you should not make any further calls to the file (as the handle might be reused for a
  * new file).
  */
-bool afatfs_fclose(afatfsFilePtr_t file, afatfsCallback_t callback)
+bool afatfs_fclose(afatfsFilePtr_t file, afatfsCallback_t callback, void *user)
 {
     if (!file || file->type == AFATFS_FILE_TYPE_NONE) {
         return true;
@@ -2876,6 +2885,7 @@ bool afatfs_fclose(afatfsFilePtr_t file, afatfsCallback_t callback)
 
         file->operation.operation = AFATFS_FILE_OPERATION_CLOSE;
         file->operation.state.closeFile.callback = callback;
+        file->operation.state.closeFile.user = user;
         afatfs_fcloseContinue(file);
         return true;
     }
@@ -2888,14 +2898,14 @@ bool afatfs_fclose(afatfsFilePtr_t file, afatfsCallback_t callback)
  *
  * Returns true if the directory creation was begun, or false if there are too many open files.
  */
-bool afatfs_mkdir(const char *filename, afatfsFileCallback_t callback)
+bool afatfs_mkdir(const char *filename, afatfsFileCallback_t callback, void *user)
 {
     afatfsFilePtr_t file = afatfs_allocateFileHandle();
 
     if (file) {
-        afatfs_createFile(file, filename, FAT_FILE_ATTRIBUTE_DIRECTORY, AFATFS_FILE_MODE_CREATE | AFATFS_FILE_MODE_READ | AFATFS_FILE_MODE_WRITE, callback);
+        afatfs_createFile(file, filename, FAT_FILE_ATTRIBUTE_DIRECTORY, AFATFS_FILE_MODE_CREATE | AFATFS_FILE_MODE_READ | AFATFS_FILE_MODE_WRITE, callback, user);
     } else if (callback) {
-        callback(NULL);
+        callback(NULL, user);
     }
 
     return file != NULL;
@@ -2969,7 +2979,7 @@ bool afatfs_chdir(afatfsFilePtr_t directory)
  *
  * Returns false if the the open failed really early (out of file handles).
  */
-bool afatfs_fopen(const char *filename, const char *mode, afatfsFileCallback_t complete)
+bool afatfs_fopen(const char *filename, const char *mode, afatfsFileCallback_t complete, void *user)
 {
     uint8_t fileMode = 0;
     afatfsFilePtr_t file;
@@ -3004,9 +3014,9 @@ bool afatfs_fopen(const char *filename, const char *mode, afatfsFileCallback_t c
     file = afatfs_allocateFileHandle();
 
     if (file) {
-        afatfs_createFile(file, filename, FAT_FILE_ATTRIBUTE_ARCHIVE, fileMode, complete);
+        afatfs_createFile(file, filename, FAT_FILE_ATTRIBUTE_ARCHIVE, fileMode, complete, user);
     } else if (complete) {
-        complete(NULL);
+        complete(NULL, user);
     }
 
     return file != NULL;
@@ -3083,7 +3093,7 @@ uint32_t afatfs_fwrite(afatfsFilePtr_t file, const uint8_t *buffer, uint32_t len
          *
          * If the seek has to queue, when the seek completes, it'll update the fileSize for us to contain the cursor.
          */
-        if (afatfs_fseekInternal(file, bytesToWriteThisSector, NULL) == AFATFS_OPERATION_IN_PROGRESS) {
+        if (afatfs_fseekInternal(file, bytesToWriteThisSector, NULL, NULL) == AFATFS_OPERATION_IN_PROGRESS) {
             break;
         }
 
@@ -3158,7 +3168,7 @@ uint32_t afatfs_fread(afatfsFilePtr_t file, uint8_t *buffer, uint32_t len)
          * A seek operation should always be able to queue on the file since we have checked that the file wasn't busy
          * on entry (fseek will never return AFATFS_OPERATION_FAILURE).
          */
-        if (afatfs_fseekInternal(file, bytesToReadThisSector, NULL) == AFATFS_OPERATION_IN_PROGRESS) {
+        if (afatfs_fseekInternal(file, bytesToReadThisSector, NULL, NULL) == AFATFS_OPERATION_IN_PROGRESS) {
             break;
         }
 
@@ -3603,7 +3613,7 @@ bool afatfs_destroy(bool dirty)
 
         for (int i = 0; i < AFATFS_MAX_OPEN_FILES; i++) {
             if (afatfs.openFiles[i].type != AFATFS_FILE_TYPE_NONE) {
-                afatfs_fclose(&afatfs.openFiles[i], NULL);
+                afatfs_fclose(&afatfs.openFiles[i], NULL, NULL);
                 // The close operation might not finish right away, so count this file as still open for now
                 openFileCount++;
             }
@@ -3611,20 +3621,20 @@ bool afatfs_destroy(bool dirty)
 
 #ifdef AFATFS_USE_INTROSPECTIVE_LOGGING
         if (afatfs.introSpecLog.type != AFATFS_FILE_TYPE_NONE) {
-            afatfs_fclose(&afatfs.introSpecLog, NULL);
+            afatfs_fclose(&afatfs.introSpecLog, NULL, NULL);
             openFileCount++;
         }
 #endif
 
 #ifdef AFATFS_USE_FREEFILE
         if (afatfs.freeFile.type != AFATFS_FILE_TYPE_NONE) {
-            afatfs_fclose(&afatfs.freeFile, NULL);
+            afatfs_fclose(&afatfs.freeFile, NULL, NULL);
             openFileCount++;
         }
 #endif
 
         if (afatfs.currentDirectory.type != AFATFS_FILE_TYPE_NONE) {
-            afatfs_fclose(&afatfs.currentDirectory, NULL);
+            afatfs_fclose(&afatfs.currentDirectory, NULL, NULL);
             openFileCount++;
         }
 
