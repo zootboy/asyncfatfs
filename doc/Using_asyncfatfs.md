@@ -62,6 +62,11 @@ may require a large amount of IO. Forward seeks that stay within a 512-byte bloc
 forward seeks scale linearly with the distance from the current write cursor, but absolute or reverse seeks
 scale linearly with the distance from the start of the file.
 
+#### No Reentrancy
+
+The AsyncFatFS API calls are not reentrant. They must all be called from the same thread in a multi-threaded
+system, and they must not be called from within an interrupt service routine or signal handler function.
+
 ### Compiling and Linking
 
 Simply copy the 5 files from the lib/ directory into your project. Make sure that the .h files are in a path

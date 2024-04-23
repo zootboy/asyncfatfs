@@ -457,6 +457,10 @@ typedef struct afatfs_t {
     // The current working directory:
     afatfsFile_t currentDirectory;
 
+    // The createFile operation has to walk the CWD, but there can only be one active walker at a time.
+    // createFile must claim this mutex before beginning a directory walk (findFirst) on the global CWD.
+    afatfsFile_t *cwdWalkMutex;
+
     uint32_t partitionStartSector; // The physical sector that the first partition on the device begins at
 
     uint32_t fatStartSector; // The first sector of the first FAT
@@ -2194,6 +2198,13 @@ void afatfs_findLast(afatfsFilePtr_t directory)
     afatfs_fileUnlockCacheSector(directory);
 }
 
+// Special internal findLast that frees the CWD mutex. Calling this more than once is actually dangerous.
+static void afatfs_findLastCWD(afatfsFile_t *directory)
+{
+    afatfs.cwdWalkMutex = NULL;
+    afatfs_findLast(directory);
+}
+
 /**
  * Initialise the finder so that the first call with the directory to findNext() will return the first file in the
  * directory.
@@ -2202,6 +2213,20 @@ void afatfs_findFirst(afatfsFilePtr_t directory, afatfsFinder_t *finder)
 {
     afatfs_fseek(directory, 0, AFATFS_SEEK_SET);
     finder->entryIndex = -1;
+}
+
+// Special, mutex-guarded findFirst variant for internal use. Returns AFATFS_OPERATION_FAILURE if
+// the mutex was not free, returns AFATFS_OPERATION_SUCCESS if it was free and has now been taken.
+// Must be paired with findLastCWD to free the mutex, otherwise the filesystem will deadlock.
+static afatfsOperationStatus_e afatfs_findFirstCWD(afatfsFile_t *directory, afatfsFinder_t *finder, afatfsFile_t *caller)
+{
+    if (afatfs.cwdWalkMutex == NULL) {
+        afatfs.cwdWalkMutex = caller;
+        afatfs_findFirst(directory, finder);
+        return AFATFS_OPERATION_SUCCESS;
+    } else {
+        return AFATFS_OPERATION_FAILURE;
+    }
 }
 
 static afatfsOperationStatus_e afatfs_extendSubdirectoryContinue(afatfsFile_t *directory)
@@ -2357,7 +2382,7 @@ static afatfsOperationStatus_e afatfs_allocateDirectoryEntry(afatfsFilePtr_t dir
             if (fat_isDirectoryEntryEmpty(*dirEntry) || fat_isDirectoryEntryTerminator(*dirEntry)) {
                 afatfs_cacheSectorMarkDirty(afatfs_getCacheDescriptorForBuffer((uint8_t*) *dirEntry));
 
-                afatfs_findLast(directory);
+                afatfs_findLastCWD(directory);
                 return AFATFS_OPERATION_SUCCESS;
             }
         } else {
@@ -2568,9 +2593,10 @@ static void afatfs_createFileContinue(afatfsFile_t *file)
 
     switch (opState->phase) {
         case AFATFS_CREATEFILE_PHASE_INITIAL:
-            afatfs_findFirst(&afatfs.currentDirectory, &file->directoryEntryPos);
-            opState->phase = AFATFS_CREATEFILE_PHASE_FIND_FILE;
-            goto doMore;
+            if (afatfs_findFirstCWD(&afatfs.currentDirectory, &file->directoryEntryPos, file) == AFATFS_OPERATION_SUCCESS) {
+                opState->phase = AFATFS_CREATEFILE_PHASE_FIND_FILE;
+                goto doMore;
+            }
         break;
         case AFATFS_CREATEFILE_PHASE_FIND_FILE:
             do {
@@ -2580,14 +2606,16 @@ static void afatfs_createFileContinue(afatfsFile_t *file)
                     case AFATFS_OPERATION_SUCCESS:
                         // Is this the last entry in the directory?
                         if (entry == NULL || fat_isDirectoryEntryTerminator(entry)) {
-                            afatfs_findLast(&afatfs.currentDirectory);
+                            afatfs_findLastCWD(&afatfs.currentDirectory);
 
                             if ((file->mode & AFATFS_FILE_MODE_CREATE) != 0) {
                                 // The file didn't already exist, so we can create it. Allocate a new directory entry
-                                afatfs_findFirst(&afatfs.currentDirectory, &file->directoryEntryPos);
+                                status = afatfs_findFirstCWD(&afatfs.currentDirectory, &file->directoryEntryPos, file);
 
-                                opState->phase = AFATFS_CREATEFILE_PHASE_CREATE_NEW_FILE;
-                                goto doMore;
+                                if (status == AFATFS_OPERATION_SUCCESS) {
+                                    opState->phase = AFATFS_CREATEFILE_PHASE_CREATE_NEW_FILE;
+                                    goto doMore;
+                                }
                             } else {
                                 // File not found.
 
@@ -2598,14 +2626,14 @@ static void afatfs_createFileContinue(afatfsFile_t *file)
                             // We found a file with this name!
                             afatfs_fileLoadDirectoryEntry(file, entry);
 
-                            afatfs_findLast(&afatfs.currentDirectory);
+                            afatfs_findLastCWD(&afatfs.currentDirectory);
 
                             opState->phase = AFATFS_CREATEFILE_PHASE_SUCCESS;
                             goto doMore;
                         } // Else this entry doesn't match, fall through and continue the search
                     break;
                     case AFATFS_OPERATION_FAILURE:
-                        afatfs_findLast(&afatfs.currentDirectory);
+                        afatfs_findLastCWD(&afatfs.currentDirectory);
                         opState->phase = AFATFS_CREATEFILE_PHASE_FAILURE;
                         goto doMore;
                     break;
