@@ -71,7 +71,7 @@ system, and they must not be called from within an interrupt service routine or 
 
 Simply copy the 5 files from the lib/ directory into your project. Make sure that the .h files are in a path
 that is used by your build system for header files, or that they are in the same directory as the .c files.
-Compile and link against both `fat_standard.c` and `asyncfatfs.c`. 
+Compile and link against both `fat_standard.c` and `asyncfatfs.c`.
 
 AsyncFatFS requires a C99-compatible compiler. In addition, the compiler must support the
 `__attribute__((packed))` struct attribute. The code is tested with GCC.
@@ -348,7 +348,7 @@ queued due to the file being busy.
 
 This function deletes the open file referred to by the `file` parameter. It behaves similarly to the `afatfs_ftruncate` command, but its callback differs in its signature:
 `void funlink_callback(void *user)`
-Note that the callback does not include a file handle, since after unlinking the file will be closed and 
+Note that the callback does not include a file handle, since after unlinking the file will be closed and
 therefore have no valid file handle. The `user` pointer is still available to differentiate the source of the
 callback if needed.
 
@@ -375,7 +375,7 @@ until it succeeds.
 Due to the strong coupling between storage blocks and the AsyncFatFS cache system, the most optimal read
 pattern is one that always reads in exactly 512-byte increments. If the file pointer is always kept at a
 multiple of 512 `(offset % 512 == 0)`, reads of 512 bytes will always read either the full 512 bytes or 0 bytes
-(retry later). 
+(retry later).
 
 `uint32_t afatfs_fwrite(afatfsFilePtr_t file, const uint8_t *buffer, uint32_t len)`
 
@@ -388,7 +388,7 @@ data can be accepted in a single write is hard to predict; the user application 
 writes that do not accept the full buffer in one operation. The fwrite function does not require that the
 passed buffer remain valid after it has returned. Any bytes that were accepted by the fwrite have been copied
 into AsyncFatFS internal buffers during the fwrite call. If a zero is returned, either the file is busy, not
-opened in a writable mode, or the filesystem has run out of space. To check if the filesystem is full, use the 
+opened in a writable mode, or the filesystem has run out of space. To check if the filesystem is full, use the
 `afatfs_isFull` function. If the filesystem is not full, writes may be periodically retried until they
 succeed.
 

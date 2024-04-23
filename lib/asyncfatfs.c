@@ -2449,8 +2449,8 @@ static afatfsOperationStatus_e afatfs_ftruncateContinue(afatfsFilePtr_t file, bo
             status = afatfs_saveDirectoryEntry(file, markDeleted ? AFATFS_SAVE_DIRECTORY_DELETED : AFATFS_SAVE_DIRECTORY_NORMAL);
 
             if (status == AFATFS_OPERATION_SUCCESS) {
-                if(opState->currentCluster == 0x0){ //current cluster 0 at this phase means it is an empty file 
-                    opState->phase = AFATFS_TRUNCATE_FILE_SUCCESS; 
+                if(opState->currentCluster == 0x0){ //current cluster 0 at this phase means it is an empty file
+                    opState->phase = AFATFS_TRUNCATE_FILE_SUCCESS;
                     goto doMore;
                 }
 #ifdef AFATFS_USE_FREEFILE
@@ -2973,7 +2973,7 @@ bool afatfs_chdir(afatfsFilePtr_t directory)
         afatfs_initFileHandle(&afatfs.currentDirectory);
 
         afatfs.currentDirectory.mode = AFATFS_FILE_MODE_READ | AFATFS_FILE_MODE_WRITE;
-        
+
         if (afatfs.filesystemType == FAT_FILESYSTEM_TYPE_FAT16)
             afatfs.currentDirectory.type = AFATFS_FILE_TYPE_FAT16_ROOT_DIRECTORY;
         else
@@ -3156,7 +3156,7 @@ uint32_t afatfs_fwrite(afatfsFilePtr_t file, const uint8_t *buffer, uint32_t len
  *
  * 0 will be returned when:
  *     The filesystem is busy (try again later)
- *     EOF was reached (check afatfs_isEof())
+ *     EOF was reached (check afatfs_feof())
  *
  * Fewer bytes than requested will be read when:
  *     The read spans a AFATFS_SECTOR_SIZE boundary and the following sector was not available in the cache yet.
