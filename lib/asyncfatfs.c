@@ -13,7 +13,12 @@
  * size, which we get from the directory entry). This allows for extremely fast append-only logging.
  */
 
+// Define this in your build system to use a user-supplied file for compile-time settings.
+// Useful if you want to keep AsyncFatFS as a git submodule without modifying it.
+#ifndef AFATFS_EXTERNAL_CONFIG
+
 // === Compile-time settings ===
+// For information about these settings, see the documentation in doc/Using_asyncfatfs.md
 //#define AFATFS_DEBUG
 //#define AFATFS_DEBUG_VERBOSE
 //#define AFATFS_USE_INTROSPECTIVE_LOGGING
@@ -25,6 +30,10 @@
 #define AFATFS_FREESPACE_FILENAME "FREESPAC.E"
 #define AFATFS_INTROSPEC_LOG_FILENAME "ASYNCFAT.LOG"
 // === End of compile-time settings ===
+
+#else
+#include "afatfs_config.h"
+#endif
 
 #include <stdint.h>
 #include <stdlib.h>

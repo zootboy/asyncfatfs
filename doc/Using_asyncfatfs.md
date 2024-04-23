@@ -78,7 +78,10 @@ AsyncFatFS requires a C99-compatible compiler. In addition, the compiler must su
 
 ### Compile-Time Settings
 
-There are a number of `#define` settings that can be adjusted in `asyncfatfs.c`:
+There are a number of `#define` compile-time settings that affect how AsyncFatFS operates. They can either be
+directly adjusted in `asyncfatfs.c`, or redefined in a user-supplied `afatfs_config.h` file by defining
+`AFATFS_EXTERNAL_CONFIG` in your build system. This is useful if you want to keep AsyncFatFS as a git
+submodule without modifying it. Available settings:
 
 ```
 #define AFATFS_DEBUG
