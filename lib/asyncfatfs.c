@@ -499,7 +499,7 @@ typedef struct afatfs_t {
 static afatfs_t afatfs;
 
 static void afatfs_fileOperationContinue(afatfsFile_t *file);
-static uint8_t* afatfs_fileLockCursorSectorForWrite(afatfsFilePtr_t file);
+static uint8_t* afatfs_fileLockCursorSectorForWrite(afatfsFilePtr_t file, bool isFullSector);
 static uint8_t* afatfs_fileRetainCursorSectorForRead(afatfsFilePtr_t file);
 
 static uint32_t roundUpTo(uint32_t value, uint32_t rounding)
@@ -1844,7 +1844,7 @@ static uint8_t* afatfs_fileRetainCursorSectorForRead(afatfsFilePtr_t file)
  *
  * Returns NULL if the cache was too busy, try again later.
  */
-static uint8_t* afatfs_fileLockCursorSectorForWrite(afatfsFilePtr_t file)
+static uint8_t* afatfs_fileLockCursorSectorForWrite(afatfsFilePtr_t file, bool isFullSector)
 {
     afatfsOperationStatus_e status;
     uint8_t *result;
@@ -1876,12 +1876,10 @@ static uint8_t* afatfs_fileLockCursorSectorForWrite(afatfsFilePtr_t file)
 
         /*
          * If there is data before the write point in this sector, or there could be data after the write-point
-         * then we need to have the original contents of the sector in the cache for us to merge into
+         * then we need to have the original contents of the sector in the cache for us to merge into.
+         * If we're writing a full sector, even mid-file, we can skip the read.
          */
-        if (
-            cursorOffsetInSector > 0
-            || offsetOfEndOfSector < file->logicalSize
-        ) {
+        if (!isFullSector && (cursorOffsetInSector > 0 || offsetOfEndOfSector < file->logicalSize)) {
             cacheFlags |= AFATFS_CACHE_READ;
         }
 
@@ -3110,9 +3108,10 @@ uint32_t afatfs_fwrite(afatfsFilePtr_t file, const uint8_t *buffer, uint32_t len
 
     while (len > 0) {
         uint32_t bytesToWriteThisSector = MIN(AFATFS_SECTOR_SIZE - cursorOffsetInSector, len);
+        bool writingFullSector = (bytesToWriteThisSector == AFATFS_SECTOR_SIZE);
         uint8_t *sectorBuffer;
 
-        sectorBuffer = afatfs_fileLockCursorSectorForWrite(file);
+        sectorBuffer = afatfs_fileLockCursorSectorForWrite(file, writingFullSector);
         if (!sectorBuffer) {
             // Cache is currently busy
             break;
