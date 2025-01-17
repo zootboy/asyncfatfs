@@ -156,12 +156,12 @@ times until they report success. Other calls require you to register a callback 
 operation completes.
 
 > [!IMPORTANT]
-> Callbacks will sometimes be directly called by API call that initially
+> Callbacks will sometimes be directly called by the API call that initially
 > registers them before the call returns. Be aware of this when altering
 > state machine states from within callback functions.
 
 File handles must be treated as opaque pointers. Once a file has been closed, any references to its handle
-that were kept bt the user application must be discarded. File handles are recycled internally, so no
+that were kept by the user application must be discarded. File handles are recycled internally, so no
 guarantees are made about the state of handles after a close.
 
 AsyncFatFS allows directories to be opened and referred to by file handles. This is primarily to enable the
@@ -194,7 +194,7 @@ should be called frequently from the user application's mainloop.
 `bool afatfs_flush(void)`
 
 Attempt to flush all dirty blocks in RAM to the backend. Returns `true` if all data has been successfully
-written to the backend, or `false` if there is still pending writes. Only ensures data sent by operations
+written to the backend, or `false` if there are still pending writes. Only ensures data sent by operations
 before the flush have been successfully passed to the backend driver. Any subsequent file or directory
 operations can produce newly-dirty blocks.
 
@@ -222,13 +222,14 @@ a callback function with the following signature:
 This callback will be fired with a file handle pointing to the new or existing directory if the operation
 succeeded, or it will be fired with a `NULL` file handle if the mkdir failed. Failures could be due to the
 filesystem being full or the CWD hitting a FAT limit. The `user` pointer may be used to identify the source of
-the callback, or may be left `NULL` if not needed. It is up to the user application to close the directory
-handle supplied to the callback (if not `NULL`) once it is no longer needed.
+the callback, or may be left `NULL` if not needed. If a valid directory handle is supplied to the callback
+(`afatfsFilePtr_t file` is not `NULL`), the user application must close the directory once it is no longer
+needed.
 
 `bool afatfs_chdir(afatfsFilePtr_t dirHandle)`
 
 Change the CWD to the directory supplied by the `dirHandle` argument. You must successfully call
-`afatfs_fopen` on the directory before passing it to to this function, and you must wait for this function to
+`afatfs_fopen` on the directory before passing it to to this function, and you must wait for `afatfs_chdir` to
 return successfully before calling `afatfs_fclose` on the dirHandle. Returns `true` if the chdir operation has
 been completed successfully, otherwise returns `false` if the filesystem is waiting on other operations to
 complete. If `false` is returned, you must call `afatfs_chdir` again with the same parameter at a later time.
